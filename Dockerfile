@@ -32,4 +32,4 @@ USER convergence_user
 
 EXPOSE 8081
 
-CMD ["uvicorn", "src.main:application", "--host", "0.0.0.0", "--port", "8081"]
+CMD ["python", "src/main.py"]

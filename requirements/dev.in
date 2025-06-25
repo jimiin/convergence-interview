@@ -1,12 +1,10 @@
-# Production dependencies
+# Development dependencies
 pydantic-settings
 tenacity
 fastapi
 uvicorn
 gunicorn
 python-dotenv
-
-# Development dependencies
 pytest
 coverage
 pre-commit
