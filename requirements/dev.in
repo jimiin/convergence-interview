@@ -1,0 +1,15 @@
+# Production dependencies
+pydantic-settings
+tenacity
+fastapi
+uvicorn
+gunicorn
+python-dotenv
+
+# Development dependencies
+pytest
+coverage
+pre-commit
+pip-tools
+pytest-asyncio
+httpx
