@@ -1,22 +1,26 @@
+import asyncio
 import os
 from dotenv import load_dotenv
 
 from agent import PokemonAgent
-from tools.pokeapi import get_pokemon_data
+from tools.pokeapi import get_poke_api_tools
 from tools.pokemon_types import get_effectiveness
 from tools.smogon import get_most_used_pokemons
-from tools.tool import Tool
+from tools.tool import FnTool
 
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-tools = [
-    Tool(get_pokemon_data),
-    Tool(get_effectiveness),
-    Tool(get_most_used_pokemons),
-]
+async def run_agent():
+    tools = [
+        FnTool(get_effectiveness),
+        FnTool(get_most_used_pokemons),
+    ] + get_poke_api_tools()
 
-agent = PokemonAgent(OPENAI_API_KEY, tools)
-query_result = agent.run("What type is Pikachu?")
-print(query_result)
+    agent = PokemonAgent(OPENAI_API_KEY, tools)
+    query_result = await agent.run("What type is Pikachu?")
+    print(query_result)
+
+if __name__ == "__main__":
+    asyncio.run(run_agent())

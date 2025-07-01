@@ -25,7 +25,7 @@ class PokemonAgent:
         self.llm = OpenAI(api_key=api_key)
         self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
 
-    def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
+    async def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
         SYSTEM_PROMOPT = dedent(f"""
         You are a Pokémon-savvy assistant. You operate in a loop with the following structure:
 
@@ -54,13 +54,13 @@ class PokemonAgent:
             {"role": "system", "content": SYSTEM_PROMOPT},
             {"role": "user", "content": user_query}
         ]
-        tool_signatures = [tool.get_fn_signature() for tool in self.tools.values()]
+        tool_schemas = [tool.get_json_schema() for tool in self.tools.values()]
 
         for _ in range(max_steps):
             completion = self.llm.chat.completions.parse(
                 model="gpt-4o",
                 messages=messages,
-                tools=tool_signatures,
+                tools=tool_schemas,
                 response_format=PokemonAgentResponse
             )
 
@@ -73,7 +73,7 @@ class PokemonAgent:
 
             tool_calls = response.tool_calls
             if tool_calls:
-                observations = self._process_tool_calls(tool_calls)
+                observations = await self._process_tool_calls(tool_calls)
                 formatted_observations = self._format_observations(observations)
                 messages.append({
                     "role": "assistant",
@@ -83,19 +83,19 @@ class PokemonAgent:
         completion = self.llm.chat.completions.parse(
             model="gpt-4o",
             messages=messages,
-            tools=tool_signatures,
+            tools=tool_schemas,
             response_format=PokemonAgentResponse
         )
         return completion.choices[0].message.parsed.final_answer
     
-    def _process_tool_calls(self, tool_calls: list) -> dict:
+    async def _process_tool_calls(self, tool_calls: list) -> dict:
         observations = {}
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
 
             logger.info(f"Action: {tool_name}")
-            result = self.tools[tool_name].invoke(**tool_args)
+            result = await self.tools[tool_name].invoke(**tool_args)
             tool_args_str = ",".join(str(v) for v in tool_args.values())
             observations[(tool_name, tool_args_str)] = result
 
