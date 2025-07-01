@@ -5,13 +5,14 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from tool import Tool
+from tools.pokemon_types import PokemonType
+from tools.tool import Tool
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(lineno)d - %(message)s",
     datefmt="%Y-%m-%d %H:%M",
     level=logging.INFO
-)
+)   
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class PokemonAgent:
         self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
 
     def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
-        SYSTEM_PROMOPT = dedent("""
+        SYSTEM_PROMOPT = dedent(f"""
         You are a Pokémon-savvy assistant. You operate in a loop with the following structure:
 
         1. Thought - Reflect on what you need to do to answer the user's query.
@@ -33,8 +34,10 @@ class PokemonAgent:
         3. Observation - Record what the tool reveals.
 
         Guidelines:
+        - You must always respond with either thought or final answer
         - Do not make assumptions. Always use tools to retrieve accurate information.
         - Provide a final answer only when you are absolutely certain.
+        - You can return multiple tool calls
                                 
         Example Session:
         1. User Question: What type is Charizard?
@@ -42,6 +45,9 @@ class PokemonAgent:
         3. You will then be provided with observations based on your tool calls.
         4. If you believe you have enough information to answer the question, respond with final_answer.
         Otherwise, repeat the process: Thought → Action → Observation.
+                                
+        Background Knowledge:
+        - All Pokémon types are as follows: {','.join([pokemon_type.value for pokemon_type in PokemonType])}
         """)
 
         messages = [
@@ -60,18 +66,18 @@ class PokemonAgent:
 
             response = completion.choices[0].message
             parsed_response = response.parsed
-            if parsed_response.final_answer:
-                return parsed_response.final_answer
-
-            thought = parsed_response.thought
-            logger.info(f"Thought: {thought}")
+            if parsed_response:
+                if parsed_response.final_answer:
+                    return parsed_response.final_answer
+                logger.info(f"Thought: {parsed_response.thought}")
 
             tool_calls = response.tool_calls
             if tool_calls:
                 observations = self._process_tool_calls(tool_calls)
+                formatted_observations = self._format_observations(observations)
                 messages.append({
                     "role": "assistant",
-                    "content": self._format_observations(observations)
+                    "content": formatted_observations
                 })
 
         completion = self.llm.chat.completions.parse(
@@ -90,12 +96,18 @@ class PokemonAgent:
 
             logger.info(f"Action: {tool_name}")
             result = self.tools[tool_name].invoke(**tool_args)
-            observations[tool_name] = result
+            tool_args_str = ",".join(str(v) for v in tool_args.values())
+            observations[(tool_name, tool_args_str)] = result
 
         return observations
 
     def _format_observations(self, observations: dict):
-        formatted_observatiosn = []
-        for result in observations.values():
-            formatted_observatiosn.append(f"{result}")
-        return "\n".join(formatted_observatiosn)
+        formatted_observations = []
+        for (tool_name, tool_args), result in observations.items():
+            observation = [
+                f"Tool used: {tool_name}",
+                f"Tool args: {tool_args}",
+                f"Result: {result}"
+            ]
+            formatted_observations.append("\n".join(observation))
+        return "\n".join(formatted_observations)
