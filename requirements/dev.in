@@ -12,3 +12,4 @@ pip-tools
 pytest-asyncio
 httpx
 openai
+pyyaml

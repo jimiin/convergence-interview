@@ -104,7 +104,9 @@ python-dotenv==1.1.1
     #   -r requirements/dev.in
     #   pydantic-settings
 pyyaml==6.0.2
-    # via pre-commit
+    # via
+    #   -r requirements/dev.in
+    #   pre-commit
 sniffio==1.3.1
     # via
     #   anyio

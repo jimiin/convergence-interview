@@ -1,29 +1,34 @@
-from textwrap import dedent
 import httpx
+import yaml
 
-POKE_API = "https://pokeapi.co/api/v2"
+from tools.tool import HttpTool
 
-def get_pokemon_data(pokemon_name: str):
-    """
-    Returns information about a Pokémon, including its types and stats
-    
-    Parameters:
-    pokemon_name (str): The Pokémon's name.    
-    """
-    parsed_pokemon_name = pokemon_name.lower().replace(" ", "-")
-    try:
-        response = httpx.get(f"{POKE_API}/pokemon/{parsed_pokemon_name}")
-        response.raise_for_status()
-    except httpx.RequestError as exc:
-        return f"Request error: {exc}"
-    except httpx.HTTPStatusError as exc:
-        return f"Error: cannot find {pokemon_name} (status {exc.response.status_code})"
-    data = response.json()
-    types = ", ".join(t["type"]["name"] for t in data["types"])
-    stats = "\n".join(f"{s['stat']['name'].title()}: {s['base_stat']}" for s in data["stats"])
-    
-    return dedent(f"""
-    Pokémon Name: {pokemon_name}
-    Type(s): {types}
-    Stats: {stats}
-    """)
+POKE_API = "https://pokeapi.co"
+POKE_API_SPEC = "https://raw.githubusercontent.com/PokeAPI/pokeapi/master/openapi.yml"
+
+def get_poke_api_tools():
+    response = httpx.get(POKE_API_SPEC)
+    response.raise_for_status()
+    spec = yaml.safe_load(response.text)
+
+    tools: list[HttpTool] = []
+    for path, methods in spec.get("paths", {}).items():
+        operation = methods.get("get")
+        if not operation:
+            continue
+
+        name = operation.get("operationId", f"get_{path.strip('/').replace('/', '_')}")
+        description = operation.get("description", "")
+        params = operation.get("parameters", [])
+
+        tool = HttpTool(
+            name=name,
+            description=description,
+            base_url=POKE_API,
+            path=path,
+            method="GET",
+            params=params
+        )
+        tools.append(tool)
+
+    return tools
