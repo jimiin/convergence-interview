@@ -31,5 +31,5 @@ tools = [
 ]
 
 agent = PokemonAgent(OPENAI_API_KEY, tools)
-query_result = agent.run("What type is Charizard?")
+query_result = agent.run("What type is Pikachu?")
 print(query_result)

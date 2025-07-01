@@ -15,49 +15,87 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 class PokemonAgentResponse(BaseModel):
-    answer: str = Field(description="The answer to the user's question.")
+    thought: Optional[str] = Field(default=None, description="Agent's internal reasoning step.")
+    final_answer: Optional[str] = Field(default=None, description="The final answer to the user's question.")
 
 class PokemonAgent:
-    def __init__(self, api_key: str, tools: list[Tool], max_steps: Optional[int] = 5):
+    def __init__(self, api_key: str, tools: list[Tool]):
         self.llm = OpenAI(api_key=api_key)
         self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
-        self.max_steps: int = max_steps
 
-    def run(self, user_query: str) -> str:
+    def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
+        SYSTEM_PROMOPT = dedent("""
+        You are a Pokémon-savvy assistant. You operate in a loop with the following structure:
+
+        1. Thought - Reflect on what you need to do to answer the user's query.
+        2. Action - Choose and perform the appropriate action using tools.
+        3. Observation - Record what the tool reveals.
+
+        Guidelines:
+        - Do not make assumptions. Always use tools to retrieve accurate information.
+        - Provide a final answer only when you are absolutely certain.
+                                
+        Example Session:
+        1. User Question: What type is Charizard?
+        2. You respond with your thought, e.g., I should fetch the type of Charizard, and the appropriate tool call(s).
+        3. You will then be provided with observations based on your tool calls.
+        4. If you believe you have enough information to answer the question, respond with final_answer.
+        Otherwise, repeat the process: Thought → Action → Observation.
+        """)
+
         messages = [
-            {"role": "system", "content": "You are a Pokémon-savvy assistant. When responding to a user query, do not make assumptions. Always refer to the appropriate tools."},
+            {"role": "system", "content": SYSTEM_PROMOPT},
             {"role": "user", "content": user_query}
         ]
         tool_signatures = [tool.get_fn_signature() for tool in self.tools.values()]
 
-        completion = self.llm.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            tools=tool_signatures
-        )
-
-        tool_calls = completion.choices[0].message.tool_calls or []
-        for tool_call in tool_calls:
-            name = tool_call.function.name
-            args = json.loads(tool_call.function.arguments)
-            messages.append(completion.choices[0].message)
-
-            result = self.tools[name].invoke(**args)
-            messages.append(
-                {"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(result)}
+        for _ in range(max_steps):
+            completion = self.llm.chat.completions.parse(
+                model="gpt-4o",
+                messages=messages,
+                tools=tool_signatures,
+                response_format=PokemonAgentResponse
             )
 
-        response = self.llm.chat.completions.parse(
+            response = completion.choices[0].message
+            parsed_response = response.parsed
+            if parsed_response.final_answer:
+                return parsed_response.final_answer
+
+            thought = parsed_response.thought
+            logger.info(f"Thought: {thought}")
+
+            tool_calls = response.tool_calls
+            if tool_calls:
+                observations = self._process_tool_calls(tool_calls)
+                messages.append({
+                    "role": "assistant",
+                    "content": self._format_observations(observations)
+                })
+
+        completion = self.llm.chat.completions.parse(
             model="gpt-4o",
             messages=messages,
             tools=tool_signatures,
             response_format=PokemonAgentResponse
         )
-        parsed_response = response.choices[0].message.parsed
+        return completion.choices[0].message.parsed.final_answer
+    
+    def _process_tool_calls(self, tool_calls: list) -> dict:
+        observations = {}
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
 
-        return dedent(f"""
-            {parsed_response.answer}
-        """
-        )
+            logger.info(f"Action: {tool_name}")
+            result = self.tools[tool_name].invoke(**tool_args)
+            observations[tool_name] = result
+
+        return observations
+
+    def _format_observations(self, observations: dict):
+        formatted_observatiosn = []
+        for result in observations.values():
+            formatted_observatiosn.append(f"{result}")
+        return "\n".join(formatted_observatiosn)
