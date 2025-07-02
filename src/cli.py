@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -9,18 +9,18 @@ class PokedexCLI:
         custom_theme = Theme({
             "thought": "green",
             "action": "yellow",
-            "answer": "bold green",
+            "answer": "bold blue",
             "error": "bold red",
         })
-        self.console = Console(theme=custom_theme)
+        self._console = Console(theme=custom_theme)
 
-    def info(self, message: str, style: Optional[str]):
-        self.console.print(
+    def info(self, message: str, style: Optional[Literal["thought", "action", "answer", "error"]]):
+        self._console.print(
             f"[{style}]{message}[/{style}]" if style else message
         )
 
     def bot(self, message: str):
-        self.console.print(Panel(
+        self._console.print(Panel(
             f"[answer]{message}[/answer]",
             expand=False,
         ))

@@ -4,7 +4,7 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from console import PokedexCLI
+from cli import PokedexCLI
 from tools.pokemon_types import PokemonType
 from tools.tool import Tool
 
@@ -15,15 +15,15 @@ class PokemonAgentResponse(BaseModel):
 
 class PokemonAgent:
     def __init__(self, api_key: str, tools: list[Tool], console: PokedexCLI):
-        self.llm = OpenAI(api_key=api_key)
-        self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
-        self.console = console
-        self.messages = [
+        self._llm = OpenAI(api_key=api_key)
+        self._tools: dict[str, Tool] = {tool.name : tool for tool in tools}
+        self._console = console
+        self._messages = [
             {"role": "system", "content": self._get_system_prompt()}
         ]
 
     async def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
-        self.messages.append({
+        self._messages.append({
             "role": "user",
             "content": user_query
         })
@@ -48,8 +48,8 @@ class PokemonAgent:
                 })
                 parsed_reflection = reflection.parsed
                 if parsed_reflection and parsed_reflection.thought:
-                    self.console.info(parsed_reflection.thought, "thought")
-                    self.messages.append({
+                    self._console.info(parsed_reflection.thought, "thought")
+                    self._messages.append({
                         "role": "assistant",
                         "content": parsed_reflection.thought
                     })
@@ -86,13 +86,13 @@ class PokemonAgent:
         """)
 
     def _get_chat_completion(self, message = None):
-        tool_schemas = [tool.get_json_schema() for tool in self.tools.values()]
+        tool_schemas = [tool.get_json_schema() for tool in self._tools.values()]
         if message:
-            self.messages.append(message)
+            self._messages.append(message)
 
-        completion = self.llm.chat.completions.parse(
+        completion = self._llm.chat.completions.parse(
             model="gpt-4o",
-            messages=self.messages,
+            messages=self._messages,
             tools=tool_schemas,
             response_format=PokemonAgentResponse
         )
@@ -103,8 +103,9 @@ class PokemonAgent:
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
-            result = await self.tools[tool_name].invoke(**tool_args)
             tool_args_str = ",".join(str(v) for v in tool_args.values())
+            self._console.info(f"Calling {tool_name} with {tool_args_str}", "action")
+            result = await self._tools[tool_name].invoke(**tool_args)
             observations[(tool_name, tool_args_str)] = result
 
         return observations
