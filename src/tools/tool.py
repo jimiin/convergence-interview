@@ -31,7 +31,7 @@ class FnTool(Tool):
         required = []
 
         for name, param in signature.parameters.items():
-            properties[name] = self._convert_to_json_schema(param.annotation)
+            properties[name] = self._convert_py_type_to_json_schema(param.annotation)
             if param.default is inspect.Parameter.empty:
                 required.append(name)
 
@@ -50,7 +50,7 @@ class FnTool(Tool):
             }
         }
 
-    def _convert_to_json_schema(self, py_type: Any) -> dict[str, Any]:
+    def _convert_py_type_to_json_schema(self, py_type: Any) -> dict[str, Any]:
         origin = get_origin(py_type)
         args = get_args(py_type)
 
@@ -67,7 +67,7 @@ class FnTool(Tool):
             item_type = args[0] if args else Any
             return {
                 "type": "array",
-                "items": self._convert_to_json_schema(item_type),
+                "items": self._convert_py_type_to_json_schema(item_type),
                 "additionalProperties": False
             }
         return {
@@ -98,14 +98,14 @@ class HttpTool(Tool):
         async with httpx.AsyncClient() as client:
             if self.method == "GET":
                 response = await client.get(url)
-            elif self.method == "PUT":
-                response = await client.put(url, json=json_dump)
-            elif self.method == "PUT":
-                response = await client.delete(url)
-            elif self.method == "PUT":
-                response = await client.patch(url, json=json_dump)
             elif self.method == "POST":
                 response = await client.post(url, json=json_dump)
+            elif self.method == "PUT":
+                response = await client.put(url, json=json_dump)
+            elif self.method == "DELETE":
+                response = await client.delete(url)
+            elif self.method == "PATCH":
+                response = await client.patch(url, json=json_dump)
             else:
                 raise ValueError("Invalid method")
         
