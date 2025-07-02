@@ -109,7 +109,6 @@ class HttpTool(Tool):
             else:
                 raise ValueError("Invalid method")
         
-        response.raise_for_status()
         return response.json()
     
     def get_json_schema(self) -> dict[str, Any]:

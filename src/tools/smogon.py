@@ -17,7 +17,6 @@ def get_most_used_pokemons(generation: int, elo: int):
     month = "2025-06"
     try:
         response = httpx.get(f"https://www.smogon.com/stats/{month}/gen{generation}ou-{elo}.txt")
-        response.raise_for_status()
     except httpx.RequestError as exc:
         return f"Request error: {exc}"
     

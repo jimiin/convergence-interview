@@ -179,7 +179,7 @@ TYPE_CHART = {
     },
 }
 
-def get_effectiveness(attack_type: str, defender_types: list[str]):
+def get_effectiveness_multiplier(attack_type: str, defender_types: list[str]):
     """
     Returns the type effectiveness multiplier.
     
