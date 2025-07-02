@@ -11,6 +11,7 @@ from tools.tool import Tool
 class PokemonAgentResponse(BaseModel):
     thought: Optional[str] = Field(default=None, description="Agent's internal reasoning step.")
     final_answer: Optional[str] = Field(default=None, description="The final answer to the user's question.")
+    tool_fields: Optional[list[str]] = Field(default=None, description="List of relevant field names (e.g., 'types') to include when making tool calls.")
 
 class PokemonAgent:
     def __init__(self, api_key: str, tools: list[Tool], console: PokedexCLI):
@@ -30,8 +31,9 @@ class PokemonAgent:
         - You must always respond with either thought or final answer
         - Do not make assumptions. Always use tools to retrieve accurate information.
         - Provide a final answer only when you are absolutely certain.
-        - You can return multiple tool calls
-                                
+        - You can return multiple tool calls.
+        - For tool calls, include relevant fields such as types, abilities, and stats.                
+
         Example Session:
         1. User Question: What type is Charizard?
         2. You respond with your thought, e.g., I should fetch the type of Charizard, and the appropriate tool call(s).
@@ -100,17 +102,22 @@ class PokemonAgent:
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
-
-            logger.info(f"Action: {tool_name}")
             result = await self.tools[tool_name].invoke(**tool_args)
             tool_args_str = ",".join(str(v) for v in tool_args.values())
             observations[(tool_name, tool_args_str)] = result
 
         return observations
 
-    def _format_observations(self, observations: dict):
+    def _format_observations(self, observations: dict, tool_fields: Optional[list[str]]=None):
         formatted_observations = []
         for (tool_name, tool_args), result in observations.items():
+            # Include only the relevant information when tool_fields are specified
+            if isinstance(result, dict) and tool_fields:
+                updated_result = {}
+                for tool_field in tool_fields:
+                    updated_result[tool_field] = result.get(tool_field, "")
+                result = updated_result
+
             observation = [
                 f"Tool used: {tool_name}",
                 f"Tool args: {tool_args}",
