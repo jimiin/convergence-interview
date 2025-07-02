@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 from agent import PokemonAgent
-from console import PokedexCLI
+from cli import PokedexCLI
 from tools.pokeapi import get_poke_api_tools
 from tools.pokemon_types import get_effectiveness_multiplier
 from tools.smogon import get_most_used_pokemons

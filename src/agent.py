@@ -4,7 +4,7 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from cli import PokedexCLI
+from console import PokedexCLI
 from tools.pokemon_types import PokemonType
 from tools.tool import Tool
 
@@ -18,9 +18,49 @@ class PokemonAgent:
         self.llm = OpenAI(api_key=api_key)
         self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
         self.console = console
+        self.messages = [
+            {"role": "system", "content": self._get_system_prompt()}
+        ]
 
     async def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
-        SYSTEM_PROMOPT = dedent(f"""
+        self.messages.append({
+            "role": "user",
+            "content": user_query
+        })
+
+        for _ in range(max_steps):
+            # Decide on tool or final answer
+            choice = self._get_chat_completion()
+            parsed_choice = choice.parsed
+            if parsed_choice and parsed_choice.final_answer:
+                return parsed_choice.final_answer
+
+            tool_calls = choice.tool_calls
+            if tool_calls:
+                observations = await self._process_tool_calls(tool_calls)
+                tool_fields = parsed_choice.tool_fields if parsed_choice and parsed_choice.tool_fields else None
+                formatted_observations = self._format_observations(observations, tool_fields)
+                
+                # Reflect on observations
+                reflection = self._get_chat_completion({
+                    "role": "assistant",
+                    "content": formatted_observations
+                })
+                parsed_reflection = reflection.parsed
+                if parsed_reflection and parsed_reflection.thought:
+                    self.console.info(parsed_reflection.thought, "thought")
+                    self.messages.append({
+                        "role": "assistant",
+                        "content": parsed_reflection.thought
+                    })
+
+        parsed_choice = self._get_chat_completion().parsed
+        if parsed_choice and parsed_choice.final_answer:
+            return parsed_choice.final_answer
+        return "Sorry, I couldn't find an answer for that."
+    
+    def _get_system_prompt(self) -> str:
+        return dedent(f"""
         You are a Pokémon-savvy assistant. You operate in a loop with the following structure:
 
         1. Thought - Reflect on what you need to do to answer the user's query.
@@ -45,58 +85,19 @@ class PokemonAgent:
         - All Pokémon types are as follows: {','.join([pokemon_type.value for pokemon_type in PokemonType])}
         """)
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMOPT},
-            {"role": "user", "content": user_query}
-        ]
+    def _get_chat_completion(self, message = None):
         tool_schemas = [tool.get_json_schema() for tool in self.tools.values()]
+        if message:
+            self.messages.append(message)
 
-        for _ in range(max_steps):
-            # Decide on tool or final answer
-            decision = self.llm.chat.completions.parse(
-                model="gpt-4o",
-                messages=messages,
-                tools=tool_schemas,
-                response_format=PokemonAgentResponse
-            )
-
-            choice = decision.choices[0].message
-            parsed_choice = choice.parsed
-            if parsed_choice and parsed_choice.final_answer:
-                return parsed_choice.final_answer
-
-            tool_calls = choice.tool_calls
-            if tool_calls:
-                observations = await self._process_tool_calls(tool_calls)
-                formatted_observations = self._format_observations(observations)
-                messages.append({
-                    "role": "assistant",
-                    "content": formatted_observations
-                })
-
-                # Reflect on observations
-                reflection = self.llm.chat.completions.parse(
-                    model="gpt-4o",
-                    messages=messages,
-                    tools=tool_schemas,
-                    response_format=PokemonAgentResponse
-                )
-                parsed_reflection = reflection.choices[0].message.parsed
-                if parsed_reflection and parsed_reflection.thought:
-                    logger.info(f"Thought: {parsed_reflection.thought}")
-                    messages.append({
-                        "role": "assistant",
-                        "content": parsed_reflection.thought
-                    })
-
-        decision = self.llm.chat.completions.parse(
+        completion = self.llm.chat.completions.parse(
             model="gpt-4o",
-            messages=messages,
+            messages=self.messages,
             tools=tool_schemas,
             response_format=PokemonAgentResponse
         )
-        return decision.choices[0].message.parsed.final_answer
-    
+        return completion.choices[0].message
+
     async def _process_tool_calls(self, tool_calls: list) -> dict:
         observations = {}
         for tool_call in tool_calls:
