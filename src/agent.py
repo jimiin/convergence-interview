@@ -1,29 +1,22 @@
 import json
-import logging
 from textwrap import dedent
 from typing import Optional
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from cli import PokedexCLI
 from tools.pokemon_types import PokemonType
 from tools.tool import Tool
-
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s - %(lineno)d - %(message)s",
-    datefmt="%Y-%m-%d %H:%M",
-    level=logging.INFO
-)   
-
-logger = logging.getLogger(__name__)
 
 class PokemonAgentResponse(BaseModel):
     thought: Optional[str] = Field(default=None, description="Agent's internal reasoning step.")
     final_answer: Optional[str] = Field(default=None, description="The final answer to the user's question.")
 
 class PokemonAgent:
-    def __init__(self, api_key: str, tools: list[Tool]):
+    def __init__(self, api_key: str, tools: list[Tool], console: PokedexCLI):
         self.llm = OpenAI(api_key=api_key)
         self.tools: dict[str, Tool] = {tool.name : tool for tool in tools}
+        self.console = console
 
     async def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
         SYSTEM_PROMOPT = dedent(f"""
