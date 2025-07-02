@@ -57,21 +57,20 @@ class PokemonAgent:
         tool_schemas = [tool.get_json_schema() for tool in self.tools.values()]
 
         for _ in range(max_steps):
-            completion = self.llm.chat.completions.parse(
+            # Decide on tool or final answer
+            decision = self.llm.chat.completions.parse(
                 model="gpt-4o",
                 messages=messages,
                 tools=tool_schemas,
                 response_format=PokemonAgentResponse
             )
 
-            response = completion.choices[0].message
-            parsed_response = response.parsed
-            if parsed_response:
-                if parsed_response.final_answer:
-                    return parsed_response.final_answer
-                logger.info(f"Thought: {parsed_response.thought}")
+            choice = decision.choices[0].message
+            parsed_choice = choice.parsed
+            if parsed_choice and parsed_choice.final_answer:
+                return parsed_choice.final_answer
 
-            tool_calls = response.tool_calls
+            tool_calls = choice.tool_calls
             if tool_calls:
                 observations = await self._process_tool_calls(tool_calls)
                 formatted_observations = self._format_observations(observations)
@@ -80,13 +79,28 @@ class PokemonAgent:
                     "content": formatted_observations
                 })
 
-        completion = self.llm.chat.completions.parse(
+                # Reflect on observations
+                reflection = self.llm.chat.completions.parse(
+                    model="gpt-4o",
+                    messages=messages,
+                    tools=tool_schemas,
+                    response_format=PokemonAgentResponse
+                )
+                parsed_reflection = reflection.choices[0].message.parsed
+                if parsed_reflection and parsed_reflection.thought:
+                    logger.info(f"Thought: {parsed_reflection.thought}")
+                    messages.append({
+                        "role": "assistant",
+                        "content": parsed_reflection.thought
+                    })
+
+        decision = self.llm.chat.completions.parse(
             model="gpt-4o",
             messages=messages,
             tools=tool_schemas,
             response_format=PokemonAgentResponse
         )
-        return completion.choices[0].message.parsed.final_answer
+        return decision.choices[0].message.parsed.final_answer
     
     async def _process_tool_calls(self, tool_calls: list) -> dict:
         observations = {}
