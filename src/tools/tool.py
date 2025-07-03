@@ -2,7 +2,9 @@ from abc import abstractmethod
 import json
 import httpx
 import inspect
+from urllib.parse import urlencode
 from typing import Any, Callable, Literal, get_args, get_origin
+from string import Formatter
 
 class Tool:
     def __init__(self, name: str, description):
@@ -91,24 +93,48 @@ class HttpTool(Tool):
         self.method = method
         self.params = params
 
+    def _build_url(self, **kwargs):
+        formatter = Formatter()
+        field_names = [
+            field_name
+            for _, field_name, _, _ in formatter.parse(self.path)
+            if field_name
+        ]
+        
+        path_kwargs = {k: kwargs[k] for k in field_names if k in kwargs}
+        query_kwargs = {k: v for k, v in kwargs.items() if (k not in path_kwargs) and v}
+        
+        populated_path = self.path.format(**path_kwargs)
+        url = f"{self.base_url}{populated_path}"
+        
+        if query_kwargs:
+            url = url.rstrip('/')
+            url += "?" + urlencode(query_kwargs)
+        
+        return url
+    
     async def invoke(self, **kwargs):
-        url = f"{self.base_url}{self.path.format(**kwargs)}"
+        url = self._build_url(**kwargs)
         json_dump = json.dumps(kwargs)
 
-        async with httpx.AsyncClient() as client:
-            if self.method == "GET":
-                response = await client.get(url)
-            elif self.method == "POST":
-                response = await client.post(url, json=json_dump)
-            elif self.method == "PUT":
-                response = await client.put(url, json=json_dump)
-            elif self.method == "DELETE":
-                response = await client.delete(url)
-            elif self.method == "PATCH":
-                response = await client.patch(url, json=json_dump)
-            else:
-                raise ValueError("Invalid method")
-        
+        try:
+            async with httpx.AsyncClient() as client:
+                if self.method == "GET":
+                    response = await client.get(f"{url}")
+                elif self.method == "POST":
+                    response = await client.post(url, json=json_dump)
+                elif self.method == "PUT":
+                    response = await client.put(url, json=json_dump)
+                elif self.method == "DELETE":
+                    response = await client.delete(url)
+                elif self.method == "PATCH":
+                    response = await client.patch(url, json=json_dump)
+                else:
+                    raise ValueError("Invalid method")
+            
+                response.raise_for_status()
+        except Exception:
+            raise
         return response.json()
     
     def get_json_schema(self) -> dict[str, Any]:
