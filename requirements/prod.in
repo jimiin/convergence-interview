@@ -1,0 +1,9 @@
+tenacity
+fastapi
+uvicorn
+gunicorn
+python-dotenv
+httpx
+openai
+pyyaml
+rich

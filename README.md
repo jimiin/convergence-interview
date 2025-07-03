@@ -1,6 +1,23 @@
 # Convergence Take-Home Test
 
-This is a skeleton project for the Convergence take-home test. The project is set up with Docker to make development and testing consistent across different environments.
+> 🔍 **Welcome to the Pokédex!**  
+> Type `exit` or `quit` to leave
+
+---
+
+## Quick Start
+
+You can install all the dependencies with:
+
+```bash
+pip install -r requirements.txt
+```
+
+You can run the application directly with:
+
+```bash
+python src/main.py
+```
 
 ## Getting Started with Docker
 
@@ -16,10 +33,13 @@ This is a skeleton project for the Convergence take-home test. The project is se
    ```bash
    make build
    ```
+
    then
+
    ```bash
    make start
    ```
+
 2. **Add dependencies once in docker container:**
    Add new libraries in requirements/dev.in
 
@@ -28,7 +48,6 @@ This is a skeleton project for the Convergence take-home test. The project is se
    ```bash
    make deps
    ```
-
 
 ## Project Structure
 
