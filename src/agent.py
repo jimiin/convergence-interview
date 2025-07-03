@@ -61,6 +61,14 @@ class PokemonAgent:
                     "content": formatted_observations
                 })
 
+                reflection = self._get_chat_completion()
+                if reflection and reflection.agent_response and reflection.agent_response.thought:
+                    self._console.info(reflection.agent_response.thought, "thought")
+                    self._messages.append({
+                        "role": "assistant",
+                        "content": reflection.agent_response.thought
+                    })
+
         reponse = self._get_chat_completion()
         if not response or not response.agent_response or not reponse.agent_response.final_answer:
             return "Sorry, I couldn't find an answer for that."
@@ -94,7 +102,7 @@ class PokemonAgent:
         Background Knowledge:
         - All Pokémon types are as follows: {','.join([pokemon_type.value for pokemon_type in PokemonType])}
         - Currently there are 1025 Pokémon species in total.
-        - A standard Pokémon team is made up of six Pokémon.
+        - A standard Pokémon team or party is made up of six Pokémon.
         """)
 
     def _get_chat_completion(self, max_retries: Optional[int] = 3) -> Optional[ChatCompletionReponseWrapper]:
