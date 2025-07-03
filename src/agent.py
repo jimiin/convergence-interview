@@ -133,12 +133,16 @@ class PokemonAgent:
     async def _process_tool_calls(self, tool_calls: list) -> dict:
         observations = {}
         for tool_call in tool_calls:
-            tool_name = tool_call.function.name
-            tool_args = json.loads(tool_call.function.arguments)
-            tool_args_str = ",".join(str(v) for v in tool_args.values())
-            self._console.info(f"Calling {tool_name} with {tool_args_str}", "action")
-            result = await self._tools[tool_name].invoke(**tool_args)
-            observations[(tool_name, tool_args_str)] = result
+            try: 
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+                tool_args_str = ",".join(str(v) for v in tool_args.values())
+                self._console.info(f"Calling {tool_name} with {tool_args_str}", "action")
+                result = await self._tools[tool_name].invoke(**tool_args)
+                observations[(tool_name, tool_args_str)] = result
+            except Exception as e:
+                self._console.info(f"Error: {e}", "error")
+                continue
 
         return observations
 

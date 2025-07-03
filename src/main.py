@@ -33,7 +33,7 @@ async def run_agent():
             answer = await agent.run(user_query)
             console.bot(answer)
         except Exception as e:
-            console.info("error", f"Error: {e}")
+            console.info(f"Error: {e}", "error")
 
 if __name__ == "__main__":
     asyncio.run(run_agent())
