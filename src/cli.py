@@ -14,7 +14,7 @@ class PokedexCLI:
         })
         self._console = Console(theme=custom_theme)
 
-    def info(self, message: str, style: Optional[Literal["thought", "action", "answer", "error"]]):
+    def info(self, message: str, style: Optional[Literal["thought", "action", "answer", "error"]]=None):
         self._console.print(
             f"[{style}]{message}[/{style}]" if style else message
         )

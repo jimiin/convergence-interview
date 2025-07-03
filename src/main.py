@@ -24,6 +24,8 @@ async def run_agent():
     agent = PokemonAgent(OPENAI_API_KEY, tools, console)
 
     console.bot("🔍 Welcome to the Pokédex!\nType 'exit' or 'quit' to leave")
+    console.info("🟡 Yellow: Pokédex is fetching data\n🟢 Green: Pokédex's internal thought")
+
     while True:
         user_query = console.ask_user()
         if user_query.strip().lower() in ("exit", "quit"):

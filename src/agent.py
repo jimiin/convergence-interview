@@ -62,10 +62,10 @@ class PokemonAgent:
                 })
 
         reponse = self._get_chat_completion()
-        if response.agent_response and reponse.agent_response.final_answer:
-            return reponse.agent_response.final_answer
+        if not response or not response.agent_response or not reponse.agent_response.final_answer:
+            return "Sorry, I couldn't find an answer for that."
 
-        return "Sorry, I couldn't find an answer for that."
+        return reponse.agent_response.final_answer
     
     def _get_system_prompt(self) -> str:
         return dedent(f"""
@@ -82,6 +82,7 @@ class PokemonAgent:
         - You can return multiple tool calls.
         - For tool calls, include relevant fields such as types, abilities, and stats only if applicable.
         - You should avoid calling all Pokémons one by one if possible, try to be smart.
+        - Prefer using Pokémon IDs instead of names in tool calls whenever possible.
 
         Example Session:
         1. User Question: What type is Charizard?
@@ -92,7 +93,8 @@ class PokemonAgent:
                                 
         Background Knowledge:
         - All Pokémon types are as follows: {','.join([pokemon_type.value for pokemon_type in PokemonType])}
-        - Currently there are 1025 Pokémons in total.
+        - Currently there are 1025 Pokémon species in total.
+        - A standard Pokémon team is made up of six Pokémon.
         """)
 
     def _get_chat_completion(self, max_retries: Optional[int] = 3) -> Optional[ChatCompletionReponseWrapper]:
