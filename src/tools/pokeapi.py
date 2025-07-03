@@ -20,10 +20,11 @@ def get_poke_api_tools():
         name = operation.get("operationId", f"get_{path.strip('/').replace('/', '_')}")
         description = operation.get("description", "")
         params = operation.get("parameters", [])
+        param_description = '\n/'.join([f"{param.get('name')}: {param.get('description', '')}" for param in params])
 
         tool = HttpTool(
             name=name,
-            description=description,
+            description=f"{description}\n{param_description}",
             base_url=POKE_API,
             path=path,
             method="GET",
