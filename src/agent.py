@@ -1,7 +1,9 @@
 import json
 from textwrap import dedent
-from typing import Optional
+from typing import List, Optional
 from openai import OpenAI
+from openai.lib._parsing._completions import type_to_response_format_param
+from openai.types.chat.parsed_function_tool_call import ParsedFunctionToolCall
 from pydantic import BaseModel, Field
 
 from cli import PokedexCLI
@@ -13,6 +15,10 @@ class PokemonAgentResponse(BaseModel):
     final_answer: Optional[str] = Field(default=None, description="The final answer to the user's question.")
     tool_fields: Optional[list[str]] = Field(default=None, description="List of relevant field names (e.g., 'types') to include when making tool calls.")
 
+class ChatCompletionReponseWrapper(BaseModel):
+    agent_response: Optional[PokemonAgentResponse] = None
+    tool_calls: List[ParsedFunctionToolCall]
+
 class PokemonAgent:
     def __init__(self, api_key: str, tools: list[Tool], console: PokedexCLI):
         self._llm = OpenAI(api_key=api_key)
@@ -22,41 +28,43 @@ class PokemonAgent:
             {"role": "system", "content": self._get_system_prompt()}
         ]
 
-    async def run(self, user_query: str, max_steps: Optional[int] = 5) -> str:
+    async def run(self, user_query: str, max_steps: Optional[int] = 10) -> str:
         self._messages.append({
             "role": "user",
             "content": user_query
         })
 
         for _ in range(max_steps):
-            # Decide on tool or final answer
-            choice = self._get_chat_completion()
-            parsed_choice = choice.parsed
-            if parsed_choice and parsed_choice.final_answer:
-                return parsed_choice.final_answer
+            response = self._get_chat_completion()
+            if not response:
+                continue
 
-            tool_calls = choice.tool_calls
+            agent_response = response.agent_response
+            if agent_response:
+                if agent_response.final_answer:
+                    return agent_response.final_answer
+                if agent_response.thought:
+                    self._console.info(agent_response.thought, "thought")
+
+            tool_calls = response.tool_calls
             if tool_calls:
                 observations = await self._process_tool_calls(tool_calls)
-                tool_fields = parsed_choice.tool_fields if parsed_choice and parsed_choice.tool_fields else None
+                tool_fields = (
+                    response.agent_response.tool_fields
+                    if response.agent_response and response.agent_response.tool_fields
+                    else None
+                )
+
                 formatted_observations = self._format_observations(observations, tool_fields)
-                
-                # Reflect on observations
-                reflection = self._get_chat_completion({
+                self._messages.append({
                     "role": "assistant",
                     "content": formatted_observations
                 })
-                parsed_reflection = reflection.parsed
-                if parsed_reflection and parsed_reflection.thought:
-                    self._console.info(parsed_reflection.thought, "thought")
-                    self._messages.append({
-                        "role": "assistant",
-                        "content": parsed_reflection.thought
-                    })
 
-        parsed_choice = self._get_chat_completion().parsed
-        if parsed_choice and parsed_choice.final_answer:
-            return parsed_choice.final_answer
+        reponse = self._get_chat_completion()
+        if response.agent_response and reponse.agent_response.final_answer:
+            return reponse.agent_response.final_answer
+
         return "Sorry, I couldn't find an answer for that."
     
     def _get_system_prompt(self) -> str:
@@ -72,7 +80,8 @@ class PokemonAgent:
         - Do not make assumptions. Always use tools to retrieve accurate information.
         - Provide a final answer only when you are absolutely certain.
         - You can return multiple tool calls.
-        - For tool calls, include relevant fields such as types, abilities, and stats.                
+        - For tool calls, include relevant fields such as types, abilities, and stats only if applicable.
+        - You should avoid calling all Pokémons one by one if possible, try to be smart.
 
         Example Session:
         1. User Question: What type is Charizard?
@@ -83,20 +92,43 @@ class PokemonAgent:
                                 
         Background Knowledge:
         - All Pokémon types are as follows: {','.join([pokemon_type.value for pokemon_type in PokemonType])}
+        - Currently there are 1025 Pokémons in total.
         """)
 
-    def _get_chat_completion(self, message = None):
+    def _get_chat_completion(self, max_retries: Optional[int] = 3) -> Optional[ChatCompletionReponseWrapper]:
         tool_schemas = [tool.get_json_schema() for tool in self._tools.values()]
-        if message:
-            self._messages.append(message)
+        
+        for _ in range(max_retries):
+            try: 
+                completion = self._llm.chat.completions.parse(
+                    model="gpt-4o",
+                    messages=self._messages,
+                    tools=tool_schemas,
+                    response_format=type_to_response_format_param(PokemonAgentResponse)
+                )
+                message = completion.choices[0].message
+                agent_response = None
 
-        completion = self._llm.chat.completions.parse(
-            model="gpt-4o",
-            messages=self._messages,
-            tools=tool_schemas,
-            response_format=PokemonAgentResponse
-        )
-        return completion.choices[0].message
+
+                # https://github.com/openai/openai-python/issues/1733?utm_source=chatgpt.com
+                # I've been running into an issue where the OpenAI API occasionally returns duplicated JSON, which triggers a validation error.
+                # It seems to stem from passing both tools and the response format at the same time.
+                # I tried various things such as splitting the agent into two parts, but that severely degraded the performance.
+                # As a workaround, I ended up adding manual parsing to catch and correct any duplicated JSON before validation.
+                # I noticed that the two JSON responses were effectively identical, so I simply chose the last one.
+
+                if message.content:
+                    lines = [line for line in message.content.splitlines() if line.strip()]
+                    json = lines[-1]  
+                    agent_response = PokemonAgentResponse.model_validate_json(json)
+                return ChatCompletionReponseWrapper(agent_response=agent_response, tool_calls=message.tool_calls or [])
+            except Exception as e:
+                self._messages.append({
+                    "role": "assistant",
+                    "content": str(e)
+                })
+
+        return None  
 
     async def _process_tool_calls(self, tool_calls: list) -> dict:
         observations = {}
